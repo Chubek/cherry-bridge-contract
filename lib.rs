@@ -74,9 +74,10 @@ mod utils {
 
     impl From<String> for MultiChainAddrHash {
         fn from(s: String) -> Self {
-            if s.len() > 34 && s.len() < 32 {
-                panic!("Length must be between 32 and 34")
-            }
+            assert!(
+                s.len() > 34 && s.len() < 32, 
+                "Length must be between 32 and 34"
+            );           
 
             Self::from(s)
         }
