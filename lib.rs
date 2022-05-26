@@ -18,100 +18,6 @@ mod utils {
     fn hex_encode(h: &[u8], buffer: &mut [u8]) {
         hex::encode_to_slice(h, buffer).unwrap()
     }
-
-    pub enum MultiCompatAddr {
-        Ethereum([u8; 42]),
-        Polkadot([u8; 32]),
-        Solana32([u8; 32]),
-        Solana44([u8; 44]),
-    }
-
-    impl MultiCompatAddr {
-        pub fn from(s: &[u8]) -> Self {
-            match s.len() {
-                42 => {
-                    let mut arr = [0u8; 42];
-                    hex_decode(&s[..42], &mut arr as &mut [u8]);
-
-                    Self::Ethereum(arr)
-                }
-                32 => match &s[0] {
-                    0 => {
-                        let mut arr = [0u8; 32];
-                        hex_decode(&s[..42], &mut arr as &mut [u8]);
-
-                        Self::Polkadot(arr)
-                    }
-                    _ => {
-                        let mut arr = [0u8; 32];
-                        hex_decode(&s[..42], &mut arr as &mut [u8]);
-
-                        Self::Solana32(arr)
-                    }
-                },
-                44 => {
-                    let mut arr = [0u8; 44];
-                    hex_decode(&s[..42], &mut arr as &mut [u8]);
-
-                    Self::Solana44(arr)
-                }
-                _ => panic!("Wrong input length!"),
-            }
-        }
-
-        fn get_slice(&self) -> &[u8] {
-            match self {
-                MultiCompatAddr::Ethereum(b) => b.as_slice(),
-                MultiCompatAddr::Polkadot(b) => b.as_slice(),
-                MultiCompatAddr::Solana32(b) => b.as_slice(),
-                MultiCompatAddr::Solana44(b) => b.as_slice(),
-            }
-        }
-
-        fn to_string(&self) -> String {
-            let slice = self.get_slice();
-
-            match self {
-                MultiCompatAddr::Ethereum(_) => {
-                    let mut buffer = [0u8; 42];
-
-                    hex_encode(slice, &mut buffer as &mut [u8]);
-
-                    core::str::from_utf8(&buffer).unwrap().to_string()
-                }
-                MultiCompatAddr::Polkadot(_) => {
-                    let mut buffer = [0u8; 32];
-
-                    hex_encode(slice, &mut buffer as &mut [u8]);
-
-                    core::str::from_utf8(&buffer).unwrap().to_string()
-                }
-                MultiCompatAddr::Solana32(_) => {
-                    let buffer = slice as &[u8];
-
-                    core::str::from_utf8(&buffer).unwrap().to_string()
-                }
-                MultiCompatAddr::Solana44(_) => {
-                    let buffer = slice as &[u8];
-
-                    core::str::from_utf8(&buffer).unwrap().to_string()
-                }
-            }
-        }
-    }
-
-    impl From<String> for MultiCompatAddr {
-        fn from(s: String) -> Self {
-            if s.len() < 32 {
-                panic!("Length must not be smaller than 32")
-            }
-
-            let b = s.as_bytes();
-
-            Self::from(b)
-        }
-    }
-
     #[derive(
         StorageLayout,
         PackedLayout,
@@ -139,9 +45,9 @@ mod utils {
             buf
         }
 
-        pub fn from(addr_multi: MultiCompatAddr) -> Self {
-            let digest = Self::make_hash(addr_multi.get_slice());
-            let address_str = addr_multi.to_string();
+        pub fn from(addr: String) -> Self {
+            let address_str = addr.clone();
+            let digest = Self::make_hash(addr.as_bytes());
 
             MultiChainAddrHash {
                 digest,
@@ -172,17 +78,15 @@ mod utils {
                 panic!("Length must be between 32 and 34")
             }
 
-            let addr_multi: MultiCompatAddr = s.into();
-
-            Self::from(addr_multi)
+            Self::from(s)
         }
     }
 
     impl From<&[u8]> for MultiChainAddrHash {
         fn from(b: &[u8]) -> Self {
-            let multi_addr = MultiCompatAddr::from(b);
+            let multi_addr = core::str::from_utf8(b).unwrap();
 
-            Self::from(multi_addr)
+            Self::from(multi_addr.to_string())
         }
     }
 
