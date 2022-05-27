@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-
 use ink_lang as ink;
 
 mod utils {
@@ -15,13 +14,12 @@ mod utils {
     fn hex_decode(s: &[u8]) -> [u8; 32] {
         let res = hex::decode(s).unwrap();
 
-	    let  mut buffer = [0u8; 32];
-	
-	    for i in (0..res.len()).rev() {
+        let mut buffer = [0u8; 32];
 
-		    buffer[32 - (res.len() - i)] = res[i];
-	    }
-        
+        for i in (0..res.len()).rev() {
+            buffer[32 - (res.len() - i)] = res[i];
+        }
+
         buffer
     }
 
@@ -68,7 +66,6 @@ mod utils {
         pub fn to_string_digest(&self) -> String {
             let digest = self.digest;
             let digest_slice = digest.as_slice();
-      
 
             hex_encode(digest_slice)
         }
@@ -81,9 +78,9 @@ mod utils {
     impl From<String> for MultiChainAddrHash {
         fn from(s: String) -> Self {
             assert!(
-                s.len() > 34 && s.len() < 32, 
+                s.len() > 34 && s.len() < 32,
                 "Length must be between 32 and 34"
-            );           
+            );
 
             Self::from(s)
         }
@@ -114,7 +111,7 @@ mod utils {
 
     impl U256 {
         pub fn from_hex(b: &[u8]) -> Self {
-            let buffer = hex_decode(b);            
+            let buffer = hex_decode(b);
 
             U256(buffer)
         }
@@ -127,23 +124,31 @@ mod utils {
 
         pub fn from_decimal(s: String) -> Self {
             fn add(s1: String, s2: String) -> String {
-                let (mut result, mut stmp)  = ("".to_string(), "".to_string());
-                let  mut mark = 0;
-                
+                let (mut result, mut stmp) = ("".to_string(), "".to_string());
+                let mut mark = 0;
+
                 fn string_to_array_reversed(s: String) -> [u32; 256] {
                     let mut chars = s.chars();
 
                     let mut ret = [03u32; 256];
 
                     for i in 0..chars.clone().count() {
-                        ret[i] = chars.next_back().unwrap().to_digit(10).unwrap(); 
+                        ret[i] = chars.next_back().unwrap().to_digit(10).unwrap();
                     }
 
                     ret
                 }
 
-                let smaller = if s1.len() > s2.len() { s2.clone() } else { s1.clone() };
-                let larger = if s1.len() > s2.len() { s1.clone() } else { s2.clone() };
+                let smaller = if s1.len() > s2.len() {
+                    s2.clone()
+                } else {
+                    s1.clone()
+                };
+                let larger = if s1.len() > s2.len() {
+                    s1.clone()
+                } else {
+                    s2.clone()
+                };
 
                 let a1 = string_to_array_reversed(larger.clone());
                 let a2 = string_to_array_reversed(smaller.clone());
@@ -155,19 +160,19 @@ mod utils {
                         0 => {
                             stmp = "0".to_string();
                             mark = 0;
-                        },
+                        }
                         1 => {
                             stmp = "1".to_string();
                             mark = 0;
-                        },
+                        }
                         2 => {
                             stmp = "0".to_string();
                             mark = 1;
-                        },
+                        }
                         3 => {
                             stmp = "1".to_string();
                             mark = 1;
-                        },
+                        }
                         _ => (),
                     }
 
@@ -186,27 +191,23 @@ mod utils {
                 }
 
                 result
-
-            }         
-            
-            fn digit_to_bin(c: char) -> &'static str {
-            	match c {
-            		'0' => "0",
-            		'1' => "1",
-            		'2' => "10",
-            		'3' => "11",
-            		'4' => "100",
-            		'5' => "101",
-            		'6' => "110",
-            		'7' => "111",
-            		'8' => "1000",
-            		'9' => "1001",
-            		_  => "",
-            	
-            	}
-            
             }
-            
+
+            fn digit_to_bin(c: char) -> &'static str {
+                match c {
+                    '0' => "0",
+                    '1' => "1",
+                    '2' => "10",
+                    '3' => "11",
+                    '4' => "100",
+                    '5' => "101",
+                    '6' => "110",
+                    '7' => "111",
+                    '8' => "1000",
+                    '9' => "1001",
+                    _ => "",
+                }
+            }
 
             let mut result = "".to_string();
             let mut s_chars = s.chars();
@@ -219,43 +220,32 @@ mod utils {
                 r2.push_str("000");
 
                 result = add(r1, r2);
-                result = add(result,  digit_to_bin(s_chars.next().unwrap()).to_string());
-                
+                result = add(result, digit_to_bin(s_chars.next().unwrap()).to_string());
             }
-            
 
-            
             let diff = 256 - result.len();
-            
+
             let mut r = "".to_string();
-            
+
             for _ in 0..diff {
-            	r.push_str("0");            
+                r.push_str("0");
             }
-            
+
             r.push_str(result.as_str());
-            
+
             result = r;
-            
 
-            
             let mut buffer = [0u8; 32];
-            
-	
 
-           for i in (0..256).step_by(8) {
-            	let sub_string = &result[i..i + 8];
+            for i in (0..256).step_by(8) {
+                let sub_string = &result[i..i + 8];
 
-            	let byte = u8::from_str_radix(sub_string, 2).unwrap();
-            		
-            	buffer[i / 8] = byte;            		
-            		
-           }            
-		    
-		 
+                let byte = u8::from_str_radix(sub_string, 2).unwrap();
+
+                buffer[i / 8] = byte;
+            }
+
             Self(buffer)
-
-
         }
 
         pub fn to_decimal(&self) -> String {
@@ -263,44 +253,34 @@ mod utils {
 
             let mut digits = [0u16; 78];
             let mut length = 1;
-            
+
             for j in 0..32 {
-                
                 let (mut i, mut carry) = (0usize, b[j] as u16);
-                
-                while i < length || carry !=0 {
+
+                while i < length || carry != 0 {
                     let mut value = digits[i] * 256 + carry;
-                    
+
                     carry = value / 10;
                     value = value % 10;
-                    
-                    digits[i] = value;	
-                    
-                    
-                    i += 1;	
+
+                    digits[i] = value;
+
+                    i += 1;
                 }
-                
+
                 if i > length {
                     length = i;
-                    
                 }
-            
             }
-            
+
             let mut number = "".to_string();
             println!("l {length}");
             for k in (0..length).rev() {
                 number.push_str(digits[k].to_string().as_str());
-            
             }
-            
-            
-            number	
-        
-        
-        }          
-        
-        
+
+            number
+        }
 
         pub fn to_hex(&self) -> String {
             let arr = self.get();
@@ -401,9 +381,9 @@ mod utils {
                 '0' => {
                     let b = s.as_bytes();
                     Self::from_hex(b)
-                },
+                }
                 _ => Self::from_decimal(s),
-            }   
+            }
         }
     }
 }
@@ -645,10 +625,7 @@ mod bridge_cherry_contract {
             let caller = self.env().caller();
             let token_address: MultiChainAddrHash = (caller.as_ref() as &[u8]).into();
 
-            let res = self.transfer_from_to(
-                &token_address,
-                 &recipient, 
-                 token_amount);
+            let res = self.transfer_from_to(&token_address, &recipient, token_amount);
 
             Self::env().emit_event(BridgeInComplex {
                 token_address,
@@ -672,10 +649,7 @@ mod bridge_cherry_contract {
             let recipient: MultiChainAddrHash = recipient_str.clone().into();
             let from_chain = from_chain_str.clone().into();
 
-            let res = self.bridge_in(
-                token_amount, 
-                recipient,
-                from_chain);
+            let res = self.bridge_in(token_amount, recipient, from_chain);
 
             let caller = self.env().caller();
             let token_address: MultiChainAddrHash = (caller.as_ref() as &[u8]).into();
@@ -702,10 +676,7 @@ mod bridge_cherry_contract {
             let caller = self.env().caller();
             let recipient: MultiChainAddrHash = (caller.as_ref() as &[u8]).into();
 
-            let res = self.transfer_from_to(
-                &token_address,
-                 &recipient, 
-                 token_amount);
+            let res = self.transfer_from_to(&token_address, &recipient, token_amount);
 
             Self::env().emit_event(BridgeOutComplex {
                 token_address,
@@ -729,10 +700,7 @@ mod bridge_cherry_contract {
             let token_amount = token_amount_str.clone().into();
             let target_chain = target_chain_str.clone().into();
 
-            let res = self.bridge_out(
-                token_address, 
-                token_amount, 
-                target_chain);
+            let res = self.bridge_out(token_address, token_amount, target_chain);
 
             let caller = self.env().caller();
             let recipient: MultiChainAddrHash = (caller.as_ref() as &[u8]).into();
