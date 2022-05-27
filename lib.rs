@@ -4,12 +4,11 @@ mod helpers;
 
 use ink_lang as ink;
 
-
 #[ink::contract]
 mod bridge_cherry_contract {
+    const CHER_TOKEN: &'static str = "";
 
     use crate::helpers::utils::{MultiChainAddrHash, U256};
-    use helpers::utils::MultiChainAddrHash;
     use ink_storage::Mapping;
 
     #[ink(storage)]
@@ -17,8 +16,22 @@ mod bridge_cherry_contract {
     pub struct Bridge {
         owner: ink_env::AccountId,
         total_supply: Mapping<MultiChainAddrHash, U256>,
-        balances: Mapping::<(MultiChainAddrHash, MultiChainAddrHash), U256>,
+        balances: Mapping<(MultiChainAddrHash, MultiChainAddrHash), U256>,
         allowances: Mapping<(MultiChainAddrHash, MultiChainAddrHash, MultiChainAddrHash), U256>,
+    }
+
+    #[ink(event)]
+    pub struct BridgeCherryComplex {
+        #[ink(topic)]
+        token_amount: U256,
+        #[ink(topic)]
+        recipient: MultiChainAddrHash,
+    }
+
+    #[ink(event)]
+    pub struct BridgeCherrySimple {
+        token_amount: String,
+        recipient: String,
     }
 
     #[ink(event)]
@@ -110,7 +123,8 @@ mod bridge_cherry_contract {
 
             let addr_multi: MultiChainAddrHash = caller_arr.into();
 
-            self.balances.insert((&addr_multi, &initial_token), &initial_supply);
+            self.balances
+                .insert((&addr_multi, &initial_token), &initial_supply);
             self.total_supply.insert(initial_token, &initial_supply);
 
             Self::env().emit_event(Initiate {
@@ -129,11 +143,15 @@ mod bridge_cherry_contract {
         }
 
         #[ink(message)]
-        pub fn get_allowance_of(&self, owner: String, spender: String, token: String) -> Option<U256> {
+        pub fn get_allowance_of(
+            &self,
+            owner: String,
+            spender: String,
+            token: String,
+        ) -> Option<U256> {
             let mcah_owner: MultiChainAddrHash = owner.into();
             let mcah_spender: MultiChainAddrHash = spender.into();
             let tcah: MultiChainAddrHash = token.into();
-
 
             self.allowances.get((mcah_owner, mcah_spender, tcah))
         }
@@ -143,12 +161,11 @@ mod bridge_cherry_contract {
             from: &MultiChainAddrHash,
             to: &MultiChainAddrHash,
             token: &MultiChainAddrHash,
-            value: U256,
+            value: &U256,
         ) -> Result<(), BridgeContractError> {
-            let from_balance = self.get_balance_of(
-                token.to_string(), 
-            from.clone().to_string()
-        ).unwrap();
+            let from_balance = self
+                .get_balance_of(token.to_string(), from.clone().to_string())
+                .unwrap();
 
             if U256::a_greater_than_b(&value, &from_balance) {
                 return Err(BridgeContractError::ErrorTransferringFromTo(
@@ -160,9 +177,9 @@ mod bridge_cherry_contract {
 
             self.balances.insert((from, token), &sub_from);
 
-            let to_balance = self.get_balance_of(
-                to.to_string(), token.to_string()
-            ).unwrap();
+            let to_balance = self
+                .get_balance_of(to.to_string(), token.to_string())
+                .unwrap();
 
             let sub_to = U256::subtract_b_from_a(&to_balance, &value);
 
@@ -187,46 +204,65 @@ mod bridge_cherry_contract {
         ) -> Result<(), BridgeContractError> {
             let caller = self.env().caller();
 
-            let caller_arr: &[u8] = owner.as_ref();
+            let caller_arr: &[u8] = caller.as_ref();
 
             let owner: MultiChainAddrHash = caller_arr.into();
 
-            let allowance = self.get_allowance_of(from, owner, token);
+            let allowance =
+                self.get_allowance_of(from.to_string(), owner.to_string(), token.to_string());
 
             match allowance {
                 Some(all) => {
                     if U256::a_greater_than_b(value, &all) {
-                        return Err(
-                            BridgeContractError::ErrorTransferringFrom(
-                                "Insufficient Allowance".to_string())
-                            )
+                        return Err(BridgeContractError::ErrorTransferringFrom(
+                            "Insufficient Allowance".to_string(),
+                        ));
                     }
 
-                    self.transfer_from_to(from, to, value)?;
-
+                    self.transfer_from_to(from, to, token, value)?;
 
                     let sub = U256::subtract_b_from_a(&all, value);
 
                     self.allowances.insert((from, to, token), &sub);
-
-                },
+                }
                 None => {
-                    return Err(BridgeContractError::ErrorTransferringFrom("No such allowance".to_string()))
-                },
+                    return Err(BridgeContractError::ErrorTransferringFrom(
+                        "No such allowance".to_string(),
+                    ))
+                }
             }
 
             Ok(())
         }
 
+        pub fn transfer(
+            &mut self,
+            to: &MultiChainAddrHash,
+            token: &MultiChainAddrHash,
+            value: &U256,
+        ) -> Result<(), BridgeContractError> {
+            let owner = self.env().caller();
+            let owner_ref: &[u8] = owner.as_ref();
+
+            let ohac: MultiChainAddrHash = owner_ref.into();
+
+            self.transfer_from_to(&ohac, to, token, value)
+        }
+
         #[ink(message)]
-        pub fn approve(&mut self, spender: MultiChainAddrHash, token: MultiChainAddrHash, value: U256) {
+        pub fn approve(
+            &mut self,
+            spender: MultiChainAddrHash,
+            token: MultiChainAddrHash,
+            value: U256,
+        ) {
             let owner = self.env().caller();
 
             let caller_arr: &[u8] = owner.as_ref();
 
             let owner: MultiChainAddrHash = caller_arr.into();
 
-            self.allowances.insert((owner, spender, token), &value);
+            self.allowances.insert((&owner, &spender, &token), &value);
             self.env().emit_event(Approval {
                 owner: owner.to_string(),
                 spender: spender.to_string(),
@@ -236,14 +272,54 @@ mod bridge_cherry_contract {
         }
 
         #[ink(message)]
-        pub fn bridge(
+        pub fn bridge_cherry(
+            &mut self,
+            token_amount: U256,
+            recipient: MultiChainAddrHash,
+        ) -> Result<(), BridgeContractError> {
+            let token: MultiChainAddrHash = CHER_TOKEN.clone().to_string().into();
+
+            self.transfer(&recipient, &token, &token_amount)?;
+
+            Self::env().emit_event(BridgeCherryComplex {
+                token_amount,
+                recipient,
+            });
+
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn bridge_cherry_string(
+            &mut self,
+            token_amount_str: String,
+            recipient_str: String,
+            emit_simple: bool,
+        ) -> Result<(), BridgeContractError> {
+            let token_amount = token_amount_str.clone().into();
+            let recipient = recipient_str.clone().into();
+
+            self.bridge_cherry(token_amount, recipient)?;
+
+            if emit_simple {
+                Self::env().emit_event(BridgeCherrySimple {
+                    token_amount: token_amount_str,
+                    recipient: recipient_str,
+                });
+            }
+
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn bridge_in(
             &mut self,
             token_address: MultiChainAddrHash,
             token_amount: U256,
             recipient: MultiChainAddrHash,
             from_chain: U256,
         ) -> Result<(), BridgeContractError> {
-            let res = self.transfer_from_to(&token_address, &recipient, token_amount);
+            self.transfer(&recipient, &token_address, &token_amount)?;
 
             Self::env().emit_event(BridgeInComplex {
                 token_address,
@@ -252,11 +328,11 @@ mod bridge_cherry_contract {
                 from_chain: Some(from_chain),
             });
 
-            res
+            Ok(())
         }
 
         #[ink(message)]
-        pub fn bridge_string(
+        pub fn bridge_in_string(
             &mut self,
             token_address_str: String,
             token_amount_str: String,
@@ -266,58 +342,10 @@ mod bridge_cherry_contract {
         ) -> Result<(), BridgeContractError> {
             let token_address = token_address_str.clone().into();
             let token_amount = token_amount_str.clone().into();
-            let recipient = recipient_str.clone().into();
-            let from_chain = from_chain_str.clone().into();
-
-            let res = self.bridge(token_address, token_amount, recipient, from_chain);
-
-            if emit_simple {
-                Self::env().emit_event(BridgeInSimple {
-                    token_address: token_address_str,
-                    token_amount: token_amount_str,
-                    recipient: recipient_str,
-                    from_chain: Some(from_chain_str),
-                });
-            }
-
-            res
-        }
-
-        #[ink(message)]
-        pub fn bridge_in(
-            &mut self,
-            token_amount: U256,
-            recipient: MultiChainAddrHash,
-            from_chain: U256,
-        ) -> Result<(), BridgeContractError> {
-            let caller = self.env().caller();
-            let token_address: MultiChainAddrHash = (caller.as_ref() as &[u8]).into();
-
-            let res = self.transfer_from_to(&token_address, &recipient, token_amount);
-
-            Self::env().emit_event(BridgeInComplex {
-                token_address,
-                token_amount,
-                recipient,
-                from_chain: Some(from_chain),
-            });
-
-            res
-        }
-
-        #[ink(message)]
-        pub fn bridge_in_string(
-            &mut self,
-            token_amount_str: String,
-            recipient_str: String,
-            from_chain_str: String,
-            emit_simple: bool,
-        ) -> Result<(), BridgeContractError> {
-            let token_amount = token_amount_str.clone().into();
             let recipient: MultiChainAddrHash = recipient_str.clone().into();
             let from_chain = from_chain_str.clone().into();
 
-            let res = self.bridge_in(token_amount, recipient, from_chain);
+            self.bridge_in(token_address, token_amount, recipient, from_chain)?;
 
             let caller = self.env().caller();
             let token_address: MultiChainAddrHash = (caller.as_ref() as &[u8]).into();
@@ -331,7 +359,7 @@ mod bridge_cherry_contract {
                 });
             }
 
-            res
+            Ok(())
         }
 
         #[ink(message)]
@@ -342,18 +370,21 @@ mod bridge_cherry_contract {
             target_chain: U256,
         ) -> Result<(), BridgeContractError> {
             let caller = self.env().caller();
-            let recipient: MultiChainAddrHash = (caller.as_ref() as &[u8]).into();
+            let from: MultiChainAddrHash = (caller.as_ref() as &[u8]).into();
 
-            let res = self.transfer_from_to(&token_address, &recipient, token_amount);
+            let contract_hash = self.env().own_code_hash().unwrap();
+            let to = (contract_hash.as_ref() as &[u8]).into();
+
+            self.transfer_from(&from, &to, &token_address, &token_amount)?;
 
             Self::env().emit_event(BridgeOutComplex {
                 token_address,
                 token_amount,
-                recipient,
+                recipient: to,
                 target_chain: Some(target_chain),
             });
 
-            res
+            Ok(())
         }
 
         #[ink(message)]
@@ -368,7 +399,7 @@ mod bridge_cherry_contract {
             let token_amount = token_amount_str.clone().into();
             let target_chain = target_chain_str.clone().into();
 
-            let res = self.bridge_out(token_address, token_amount, target_chain);
+            self.bridge_out(token_address, token_amount, target_chain)?;
 
             let caller = self.env().caller();
             let recipient: MultiChainAddrHash = (caller.as_ref() as &[u8]).into();
@@ -382,17 +413,7 @@ mod bridge_cherry_contract {
                 });
             }
 
-            res
-        }
-
-        #[ink(message)]
-        pub fn set_total_supply(&mut self, total_supply: U256) {
-            assert!(
-                self.env().caller_is_origin() && self.env().caller() == self.owner,
-                "Call does not originate from origin OR not from the owner"
-            );
-
-            self.total_supply = total_supply;
+            Ok(())
         }
     }
 }
