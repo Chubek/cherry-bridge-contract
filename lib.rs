@@ -9,14 +9,16 @@ use ink_lang as ink;
 mod bridge_cherry_contract {
 
     use crate::helpers::utils::{MultiChainAddrHash, U256};
+    use helpers::utils::MultiChainAddrHash;
+    use ink_storage::Mapping;
 
     #[ink(storage)]
     #[derive(ink_storage::traits::SpreadAllocate)]
     pub struct Bridge {
         owner: ink_env::AccountId,
-        total_supply: U256,
-        balances: ink_storage::Mapping<MultiChainAddrHash, U256>,
-        allowances: ink_storage::Mapping<(MultiChainAddrHash, MultiChainAddrHash), U256>,
+        total_supply: Mapping<MultiChainAddrHash, U256>,
+        balances: Mapping::<(MultiChainAddrHash, MultiChainAddrHash), U256>,
+        allowances: Mapping<(MultiChainAddrHash, MultiChainAddrHash, MultiChainAddrHash), U256>,
     }
 
     #[ink(event)]
@@ -96,20 +98,20 @@ mod bridge_cherry_contract {
 
     impl Bridge {
         #[ink(constructor)]
-        pub fn new(initial_supply: U256) -> Self {
+        pub fn new(initial_token: MultiChainAddrHash, initial_supply: U256) -> Self {
             ink_lang::utils::initialize_contract(|contract| {
-                Self::new_init(contract, initial_supply)
+                Self::new_init(contract, initial_token, initial_supply)
             })
         }
 
-        fn new_init(&mut self, initial_supply: U256) {
+        fn new_init(&mut self, initial_token: MultiChainAddrHash, initial_supply: U256) {
             let caller = self.env().caller();
             let caller_arr: &[u8] = caller.as_ref();
 
             let addr_multi: MultiChainAddrHash = caller_arr.into();
 
-            self.balances.insert(&addr_multi, &initial_supply);
-            self.total_supply = initial_supply;
+            self.balances.insert((&addr_multi, &initial_token), &initial_supply);
+            self.total_supply.insert(initial_token, &initial_supply);
 
             Self::env().emit_event(Initiate {
                 initiated: true,
@@ -119,27 +121,34 @@ mod bridge_cherry_contract {
         }
 
         #[ink(message)]
-        pub fn get_balance_of(&self, owner: String) -> Option<U256> {
+        pub fn get_balance_of(&self, token: String, owner: String) -> Option<U256> {
             let mcah: MultiChainAddrHash = owner.into();
+            let tcah: MultiChainAddrHash = token.into();
 
-            self.balances.get(mcah)
+            self.balances.get((mcah, tcah))
         }
 
         #[ink(message)]
-        pub fn get_allowance_of(&self, owner: String, spender: String) -> Option<U256> {
+        pub fn get_allowance_of(&self, owner: String, spender: String, token: String) -> Option<U256> {
             let mcah_owner: MultiChainAddrHash = owner.into();
             let mcah_spender: MultiChainAddrHash = spender.into();
+            let tcah: MultiChainAddrHash = token.into();
 
-            self.allowances.get((mcah_owner, mcah_spender))
+
+            self.allowances.get((mcah_owner, mcah_spender, tcah))
         }
 
         fn transfer_from_to(
             &mut self,
             from: &MultiChainAddrHash,
             to: &MultiChainAddrHash,
+            token: &MultiChainAddrHash,
             value: U256,
         ) -> Result<(), BridgeContractError> {
-            let from_balance = self.get_balance_of(from.to_string()).unwrap();
+            let from_balance = self.get_balance_of(
+                token.to_string(), 
+            from.clone().to_string()
+        ).unwrap();
 
             if U256::a_greater_than_b(&value, &from_balance) {
                 return Err(BridgeContractError::ErrorTransferringFromTo(
@@ -149,13 +158,15 @@ mod bridge_cherry_contract {
 
             let sub_from = U256::subtract_b_from_a(&from_balance, &value);
 
-            self.balances.insert(from, &sub_from);
+            self.balances.insert((from, token), &sub_from);
 
-            let to_balance = self.get_balance_of(to.to_string()).unwrap();
+            let to_balance = self.get_balance_of(
+                to.to_string(), token.to_string()
+            ).unwrap();
 
             let sub_to = U256::subtract_b_from_a(&to_balance, &value);
 
-            self.balances.insert(to, &sub_to);
+            self.balances.insert((to, token), &sub_to);
 
             Self::env().emit_event(Transfer {
                 from: Some(from.to_string()),
@@ -167,15 +178,55 @@ mod bridge_cherry_contract {
             Ok(())
         }
 
+        pub fn transfer_from(
+            &mut self,
+            from: &MultiChainAddrHash,
+            to: &MultiChainAddrHash,
+            token: &MultiChainAddrHash,
+            value: &U256,
+        ) -> Result<(), BridgeContractError> {
+            let caller = self.env().caller();
+
+            let caller_arr: &[u8] = owner.as_ref();
+
+            let owner: MultiChainAddrHash = caller_arr.into();
+
+            let allowance = self.get_allowance_of(from, owner, token);
+
+            match allowance {
+                Some(all) => {
+                    if U256::a_greater_than_b(value, &all) {
+                        return Err(
+                            BridgeContractError::ErrorTransferringFrom(
+                                "Insufficient Allowance".to_string())
+                            )
+                    }
+
+                    self.transfer_from_to(from, to, value)?;
+
+
+                    let sub = U256::subtract_b_from_a(&all, value);
+
+                    self.allowances.insert((from, to, token), &sub);
+
+                },
+                None => {
+                    return Err(BridgeContractError::ErrorTransferringFrom("No such allowance".to_string()))
+                },
+            }
+
+            Ok(())
+        }
+
         #[ink(message)]
-        pub fn approve(&mut self, spender: MultiChainAddrHash, value: U256) {
+        pub fn approve(&mut self, spender: MultiChainAddrHash, token: MultiChainAddrHash, value: U256) {
             let owner = self.env().caller();
 
             let caller_arr: &[u8] = owner.as_ref();
 
             let owner: MultiChainAddrHash = caller_arr.into();
 
-            self.allowances.insert((&owner, &spender), &value);
+            self.allowances.insert((owner, spender, token), &value);
             self.env().emit_event(Approval {
                 owner: owner.to_string(),
                 spender: spender.to_string(),
